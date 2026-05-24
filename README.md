@@ -22,6 +22,7 @@
 
 当前仓库适合继续作为轻量 Python 包维护，不需要引入 Web 框架或重型任务框架。推荐分工是：
 
+- `CONSTITUTION.md` 作为项目宪章，规定文档和代理输出默认中文优先；必须保留英文术语时，应补充中文说明。
 - `src/timbre_design/data/voices_v2_106.json` 作为音色库唯一源数据，负责锁定每个 `voice_id` 的结构化描述。
 - `src/timbre_design/spatial.py` 作为高价值空间场景、关键词和默认摆位的单一事实来源。
 - `src/timbre_design/` 维护校验、匹配、提示词渲染、角色映射、资产生成等可测试逻辑。

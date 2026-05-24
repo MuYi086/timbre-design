@@ -20,7 +20,6 @@ env/
 # Local runtime outputs
 work/
 outputs/
-samples/generated/
 *.voice.txt
 *.controls.json
 
