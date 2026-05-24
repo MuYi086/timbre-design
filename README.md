@@ -8,7 +8,7 @@
 - 校验音色库结构、数量、重复 `voice_id` 和基础字段。
 - 根据角色的性别、年龄、物种/类型、性格和音色提示匹配音色。
 - 渲染 VoxCPM2 控制提示，输出稳定的 `voice_description`。
-- 从 `characters.json` 导出兼容 `audio-3d-sdd/config/voice-casting.json` 的映射文件。
+- 从 `characters.json` 导出兼容 `audio-3d-sdd/config/voice-casting.json` 的映射文件，并附带角色分配审计与人工复核列表。
 - 可通过本地命令模板调用 VoxCPM2 生成样例音频。
 - 可按“一音色一目录”导出试听资产：`voice.json`、`sample.txt`、`sample.voice.txt`、`sample.controls.json`、`README.md`，并可进一步生成 `sample.wav` / `sample.mp3`。
 
@@ -46,10 +46,20 @@ python -m timbre_design prompt v_zh_narr_001
 ```powershell
 python -m timbre_design cast `
   --characters D:\github\audio-3d-sdd\jobs\book\work\characters.json `
-  --output D:\github\audio-3d-sdd\jobs\book\config\voice-casting.json
+  --output D:\github\audio-3d-sdd\jobs\book\config\voice-casting.json `
+  --dedicated-limit 12 `
+  --min-score 0.45 `
+  --min-character-confidence 0.6
 ```
 
 生成结果中的 `voice_slot` 直接使用 `voice_id`，并在 `voice_descriptions` 中写入 VoxCPM2 控制提示；`audio-3d-sdd` 的 TTS provider 会按该描述合成。
+
+导出文件会保留原有下游字段，并额外写入：
+
+- `character_voice_slots`：每个角色最终锁定到的 `voice_id`。
+- `character_assignments`：角色使用独立音色、低频分组或低置信度兜底的明细。
+- `review_items`：低角色置信度、低匹配分数、超过独立音色上限等需要人工确认的项目。
+- `match_audit`：旁白、低频分组和高频角色的匹配分数、原因、禁忌命中和策略参数。
 
 ## VoxCPM2 样例合成
 

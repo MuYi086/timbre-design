@@ -53,6 +53,50 @@ ROLE_KEYWORDS = {
     "creature": SPECIES_KEYWORDS["creature"],
 }
 
+DEFAULT_CHARACTER_REVIEW_CONFIDENCE = 0.6
+
+CONSTRAINT_KEYWORDS = {
+    "high_anger": {"愤怒", "暴怒", "高怒", "怒吼", "吼叫", "angry", "rage"},
+    "rage_shout": {"暴怒", "怒吼", "吼叫", "rage", "shout"},
+    "fight_shouts": {"打斗", "喊叫", "怒吼", "战斗呼喊", "fight", "shout"},
+    "battle_shout": {"战斗", "打斗", "喊叫", "battle", "shout"},
+    "loud_action": {"大喊", "喊叫", "动作戏", "战斗", "loud", "action"},
+    "high_volume_speech": {"高音量", "大声演讲", "高声", "loud", "speech"},
+    "speed_over_1.2x": {"快语速", "超快", "1.2x", "speed over 1.2"},
+    "speed_over_1.1x": {"快语速", "1.1x", "speed over 1.1"},
+    "rapid_high_density": {"快嘴", "高密度", "信息密集", "rapid", "dense"},
+    "high_density_info": {"高密度信息", "信息密集", "知识密集", "dense info"},
+    "knowledge_dense_content": {"知识密集", "信息密集", "dense content"},
+    "hard_info_delivery": {"硬信息", "科普", "法规", "知识密集"},
+    "children_friendly": {"儿童", "孩子", "童话", "儿童友好", "children", "kids"},
+    "children_friendly_long": {"儿童", "孩子", "儿童长篇", "children", "kids"},
+    "long_children_content": {"儿童长篇", "儿童", "童话", "children"},
+    "child_dialogue": {"儿童角色", "孩子对白", "child dialogue"},
+    "child_role": {"儿童角色", "孩子", "child role"},
+    "kids_friendly": {"儿童友好", "儿童", "kids"},
+    "kids_story_main_narration": {"儿童故事", "童话主旁白", "kids story"},
+    "children_main": {"儿童主角", "儿童主线", "children main"},
+    "dark_horror": {"恐怖", "惊悚", "黑暗", "horror"},
+    "horror_scene": {"恐怖", "惊悚", "horror"},
+    "horror_whisper": {"恐怖低语", "恐怖", "惊悚", "horror"},
+    "light_comedy": {"轻喜剧", "喜剧", "comedy"},
+    "slapstick": {"滑稽", "闹剧", "夸张喜剧", "slapstick"},
+    "overacted_comedy": {"夸张搞笑", "夸张喜剧", "overacted comedy"},
+    "over_comedic": {"夸张搞笑", "过度喜剧", "comedic"},
+    "comic_fast": {"快嘴喜剧", "喜剧快节奏", "comic fast"},
+    "romance_soft": {"温柔恋爱", "柔情", "恋爱", "romance"},
+    "soft_romance": {"温柔恋爱", "柔情", "恋爱", "romance"},
+    "soft_love_scene": {"温柔恋爱", "柔情", "爱情", "love scene"},
+    "news_reading": {"新闻播报", "播报", "news"},
+    "news_broadcast": {"新闻播报", "播报", "news"},
+    "modern_clean_anchor": {"现代播报", "新闻播报", "anchor"},
+    "full_book_main_track": {"全书主轨", "长篇主轨", "主旁白", "full book"},
+    "long_main_narration": {"长篇主旁白", "主旁白", "long narration"},
+    "long_high_energy": {"长篇高能", "高能演说", "long high energy"},
+    "warm_bedtime": {"睡前", "助眠", "温暖睡前", "bedtime"},
+    "warm_bedtime_narration": {"睡前旁白", "助眠", "bedtime narration"},
+}
+
 
 @dataclass(frozen=True)
 class CharacterProfile:
@@ -113,18 +157,38 @@ class CharacterProfile:
         ]
         return " ".join(part for part in parts if part)
 
+    def review_flags(
+        self,
+        *,
+        confidence_threshold: float = DEFAULT_CHARACTER_REVIEW_CONFIDENCE,
+    ) -> tuple[str, ...]:
+        flags: list[str] = []
+        if self.confidence < confidence_threshold:
+            flags.append("low_character_confidence")
+        gender_text = self.gender_group.strip().lower()
+        age_text = self.age_group.strip().lower()
+        if gender_text in {"", "unknown", "未知"}:
+            flags.append("unknown_gender")
+        if age_text in {"", "unknown", "未知"}:
+            flags.append("unknown_age")
+        return tuple(flags)
+
 
 @dataclass(frozen=True)
 class MatchResult:
     voice: Voice
     score: float
     reasons: tuple[str, ...]
+    constraint_hits: tuple[str, ...] = ()
+    review_flags: tuple[str, ...] = ()
 
     def to_dict(self) -> JsonDict:
         return {
             "voice_id": self.voice.voice_id,
             "score": round(self.score, 4),
             "reasons": list(self.reasons),
+            "constraint_hits": list(self.constraint_hits),
+            "review_flags": list(self.review_flags),
             "voice": self.voice.to_dict(),
         }
 
@@ -173,11 +237,21 @@ def _score_voice(character: CharacterProfile, voice: Voice) -> MatchResult:
     score += 0.24 * spatial_score
     if spatial_score >= 0.75:
         reasons.append("spatial_scene")
-    penalty = _constraint_penalty(character, voice)
+    constraint_hits = voice_constraint_hits(character, voice)
+    penalty = _constraint_penalty(constraint_hits)
     score -= penalty
     if penalty:
         reasons.append("constraint_penalty")
-    return MatchResult(voice=voice, score=max(0.0, min(score, 1.0)), reasons=tuple(reasons))
+    review_flags = list(character.review_flags())
+    if len(constraint_hits) >= 2:
+        review_flags.append("multiple_constraint_hits")
+    return MatchResult(
+        voice=voice,
+        score=max(0.0, min(score, 1.0)),
+        reasons=tuple(reasons),
+        constraint_hits=constraint_hits,
+        review_flags=tuple(review_flags),
+    )
 
 
 def _candidate_allowed(character: CharacterProfile, voice: Voice) -> bool:
@@ -271,17 +345,27 @@ def _style_score(character: CharacterProfile, voice: Voice) -> float:
     return min(1.0, matched / max(2, len(tokens)))
 
 
-def _constraint_penalty(character: CharacterProfile, voice: Voice) -> float:
+def voice_constraint_hits(character: CharacterProfile, voice: Voice) -> tuple[str, ...]:
+    """Return voice constraint keys that appear in the character context."""
+
     context = character.to_context().lower()
+    compact_context = "".join(context.replace("_", " ").split())
     not_good_for = voice.constraints.get("not_good_for", [])
     if not isinstance(not_good_for, list):
-        return 0.0
-    penalty = 0.0
+        return ()
+    hits: list[str] = []
     for item in not_good_for:
-        normalized = str(item).replace("_", " ").lower()
-        if normalized and normalized in context:
-            penalty += 0.12
-    return min(penalty, 0.3)
+        key = str(item).strip()
+        if not key:
+            continue
+        terms = _constraint_terms(key)
+        if any(_term_in_context(context, compact_context, term) for term in terms):
+            hits.append(key)
+    return tuple(hits)
+
+
+def _constraint_penalty(hits: tuple[str, ...]) -> float:
+    return min(len(hits) * 0.14, 0.35)
 
 
 def _derived_role_tags(character: CharacterProfile) -> tuple[str, ...]:
@@ -310,6 +394,23 @@ def _normalize_alias(value: str, aliases: dict[str, set[str]]) -> str:
         if text in {candidate.lower() for candidate in candidates}:
             return normalized
     return text or "unknown"
+
+
+def _constraint_terms(key: str) -> set[str]:
+    normalized = key.lower().strip()
+    terms = {
+        normalized,
+        normalized.replace("_", " "),
+        normalized.replace("_", ""),
+    }
+    terms.update(term.lower() for term in CONSTRAINT_KEYWORDS.get(normalized, set()))
+    return {term for term in terms if term}
+
+
+def _term_in_context(context: str, compact_context: str, term: str) -> bool:
+    normalized = term.lower().replace("_", " ").strip()
+    compact_term = "".join(normalized.split())
+    return bool(normalized) and (normalized in context or compact_term in compact_context)
 
 
 def _infer_species(text: str) -> str | None:

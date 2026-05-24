@@ -74,6 +74,13 @@ def build_parser() -> argparse.ArgumentParser:
     cast.add_argument("--output", type=Path, required=True)
     cast.add_argument("--provider", default="voxcpm2-local")
     cast.add_argument("--dedicated-limit", type=int, default=12)
+    cast.add_argument("--min-score", type=float, default=0.45, help="低于该匹配分数时进入复核列表")
+    cast.add_argument(
+        "--min-character-confidence",
+        type=float,
+        default=0.6,
+        help="角色抽取置信度低于该值时不分配独立音色",
+    )
     cast.set_defaults(func=cmd_cast)
 
     synth = subparsers.add_parser("synthesize", help="调用本地 VoxCPM2 生成样例音频")
@@ -166,6 +173,8 @@ def cmd_cast(args: argparse.Namespace) -> None:
         library,
         provider=args.provider,
         dedicated_limit=args.dedicated_limit,
+        min_score=args.min_score,
+        min_character_confidence=args.min_character_confidence,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

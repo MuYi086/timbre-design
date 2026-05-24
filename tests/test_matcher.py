@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from timbre_design.library import load_voice_library
-from timbre_design.matcher import CharacterProfile, match_voice
+from timbre_design.matcher import CharacterProfile, match_voice, voice_constraint_hits
 
 
 def test_match_young_female_character_prefers_human_female() -> None:
@@ -91,3 +91,21 @@ def test_match_vr_scene_can_use_spatial_robot_even_with_human_default() -> None:
 
     assert result.voice.voice_id == "v_zh_spatial_101"
     assert "spatial_scene" in result.reasons
+
+
+def test_constraint_hits_understand_chinese_role_hints() -> None:
+    library = load_voice_library()
+    voice = library.get("v_zh_narr_001")
+    character = CharacterProfile(
+        character_id="angry_narrator",
+        display_name="暴怒旁白",
+        gender_group="male",
+        age_group="adult",
+        role_tags=("narrator",),
+        voice_style_hint="高怒、怒吼、快语速 1.2x",
+    )
+
+    hits = voice_constraint_hits(character, voice)
+
+    assert "high_anger" in hits
+    assert "speed_over_1.2x" in hits

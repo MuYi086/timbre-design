@@ -29,6 +29,9 @@ def test_build_voice_casting_is_audio3d_compatible_payload() -> None:
     assert casting["narrator_voice_slot"] == "v_zh_narr_001"
     assert set(casting["low_frequency_groups"]) == set(LOW_FREQUENCY_GROUPS)
     assert casting["high_frequency_slots"]["char_001"].startswith("v_zh_")
+    assert casting["character_voice_slots"]["char_001"] == casting["high_frequency_slots"]["char_001"]
+    assert casting["character_assignments"][0]["assignment_type"] == "dedicated"
+    assert casting["match_audit"]["policy"]["dedicated_limit"] == 12
     voice_id = casting["high_frequency_slots"]["char_001"]
     assert voice_id in casting["voice_descriptions"]
     assert "VoxCPM2 音色设计" in casting["voice_descriptions"][voice_id]
@@ -73,3 +76,29 @@ def test_build_voice_casting_exports_spatial_placement_for_high_value_scene() ->
     assert voice_id in casting["spatial_placements"]
     assert casting["spatial_placements"][voice_id]["scene"] == "vehicle"
     assert casting["spatial_placements"][voice_id]["source_mode"] == "dry_voice_stem"
+
+
+def test_low_confidence_high_frequency_character_routes_to_review_fallback() -> None:
+    library = load_voice_library()
+    characters = [
+        CharacterProfile(
+            character_id="uncertain_main",
+            display_name="疑似主角",
+            gender_group="女",
+            age_group="young",
+            appearance_count=80,
+            dialogue_count=60,
+            frequency_class="high_frequency",
+            confidence=0.32,
+            voice_style_hint="角色抽取不稳定，需要人工确认。",
+        )
+    ]
+
+    casting = build_voice_casting(characters, library, min_character_confidence=0.6)
+    assignment = casting["character_assignments"][0]
+
+    assert "uncertain_main" not in casting["high_frequency_slots"]
+    assert assignment["assignment_type"] == "fallback_low_confidence"
+    assert assignment["slot"] == "未识别女声"
+    assert assignment["voice_id"] == casting["fallback_slots"]["未识别女声"]
+    assert casting["review_items"][0]["reason"] == "low_character_confidence"
